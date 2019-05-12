@@ -112,8 +112,6 @@ if ! echo "$PATH" | grep --silent -e "$BAZEL_BASE" ; then
   export PATH
 fi
 
-echo "$PATH"
-
 ###################################
 # END: Installing prerequisites   #
 ###################################
