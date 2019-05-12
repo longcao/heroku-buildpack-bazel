@@ -29,7 +29,7 @@
 
 # Indents all text by 8 spaces.
 indent() {
-  sed "s/^/       /"
+  sed -u "s/^/       /"
 }
 
 # fail fast
