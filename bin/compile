@@ -29,7 +29,7 @@
 
 # Indents all text by 8 spaces.
 indent() {
-  sed -u "s/^/       /"
+  sed "s/^/       /"
 }
 
 # fail fast
@@ -40,79 +40,106 @@ BUILD_DIR=$1
 CACHE_DIR=$2
 ENV_DIR=$3
 
+###################################
+# BEGIN: Installing prerequisites #
+###################################
+
 # default to Bazel version 0.25.2
 if [[ ! -v BAZEL_VERSION ]]; then
   BAZEL_VERSION="0.25.2"
 fi
 
+## Create the CACHE_DIR if it doesn't exist.
+if [[ ! -d "$CACHE_DIR" ]]; then
+  mkdir -p "$CACHE_DIR"
+fi
+
 # install Java 1.8
 JVM_BUILDPACK="https://codon-buildpacks.s3.amazonaws.com/buildpacks/heroku/jvm-common.tgz"
 JVM_COMMON_BUILDPACK=${JVM_COMMON_BUILDPACK:-$JVM_BUILDPACK}
-echo "-----> Install Java 8 from $JVM_COMMON_BUILDPACK"
-mkdir -p /tmp/jvm-common
-curl --retry 3 --silent --location "$JVM_COMMON_BUILDPACK" \
-  | tar xzm -C /tmp/jvm-common --strip-components=1
-. /tmp/jvm-common/bin/util
-. /tmp/jvm-common/bin/java
+echo "-----> Installing Java 8"
+if [[ ! -d "$CACHE_DIR/jvm-common" ]]; then
+  mkdir -p "$CACHE_DIR/jvm-common"
+  echo "-----> Downloading Java 8 from $JVM_COMMON_BUILDPACK"
+  curl --retry 3 --silent --location "$JVM_COMMON_BUILDPACK" \
+    | tar xzm -C "$CACHE_DIR/jvm-common" --strip-components=1
+
+  # Init jvm-common scripts
+  . "$CACHE_DIR/jvm-common/bin/util"
+  . "$CACHE_DIR/jvm-common/bin/java"
+
+  # Install the JDK to $CACHE_DIR
+  echo "-----> Installing JDK using jvm-common scripts"
+  install_java_with_overlay "$CACHE_DIR" | indent
+  echo "-----> Java 8 installed"
+else
+  echo "-----> Using cached Java 8"
+fi
 
 # Set this environment variable for Bazel, so it can use JDK 1.8.
-export JAVA_HOME="$BUILD_DIR/.jdk"
-install_java_with_overlay "$BUILD_DIR" | indent
-echo "-----> Java 8 installed"
+export JAVA_HOME="$CACHE_DIR/.jdk"
 
-# Create the CACHE_DIR if it doesn't exist.
-if [[ ! -d ${CACHE_DIR} ]]; then
-  mkdir "$CACHE_DIR"
+# Fetch the Bazel installer script
+BAZEL_URL="https://github.com/bazelbuild/bazel/releases/download/$BAZEL_VERSION/bazel-$BAZEL_VERSION-installer-linux-x86_64.sh"
+echo "-----> Installing Bazel"
+export BAZEL_INSTALLER="$CACHE_DIR/bazel-installer.sh"
+if [[ ! -f "$BAZEL_INSTALLER" ]]; then
+  echo "-----> Downloading Bazel installer from $BAZEL_URL"
+  if ! curl -L -o "$BAZEL_INSTALLER" "$BAZEL_URL" ; then
+    echo "Download failed" >&2
+    exit 1
+  fi
+else
+  echo "-----> Using cached Bazel installer script at $BAZEL_INSTALLER"
 fi
 
-# Fetch the Bazel installer
-# TODO: consider keeping the Bazel and Java installs in cache.
-URL="https://github.com/bazelbuild/bazel/releases/download/$BAZEL_VERSION/"
-URL+="bazel-$BAZEL_VERSION-installer-linux-x86_64.sh"
-echo "-----> Downloading Bazel from $URL"
-export BAZEL_INSTALLER="$CACHE_DIR/install.sh"
-if ! curl -L -o "$BAZEL_INSTALLER" "$URL"; then
-  echo "Download failed" >&2
-  exit 1
+BAZEL_BASE="$CACHE_DIR/bazel"
+
+# Install Bazel inside $BAZEL_BASE
+echo "-----> Installing Bazel"
+if [[ ! -d "$CACHE_DIR/bazel" ]]; then
+  /usr/bin/env bash "$BAZEL_INSTALLER" \
+    --base="$BAZEL_BASE" \
+    --bin="$BAZEL_BASE/binary" | indent
+  echo "-----> Bazel installed"
+else
+  echo "-----> Using cached Bazel installation"
 fi
 
-BASE="${BUILD_DIR}/bazel"
-
-if ! grep -q -e "$BASE" "$PATH"; then
-  # update path if necessary
-  PATH=${BASE}:$PATH
+# Add $BAZEL_BASE to $PATH
+if ! echo "$PATH" | grep --silent -e "$BAZEL_BASE" ; then
+  PATH=$BAZEL_BASE:$PATH
   export PATH
 fi
 
-# Install Bazel inside ${BASE}
-echo "-----> Installing Bazel"
-bash "$BAZEL_INSTALLER" \
-  --base="$BASE" \
-  --bazelrc="$HOME/bazel.bazelrc" \
-  --bin="$BASE/binary" | indent
-echo "-----> Bazel installed"
+echo "$PATH"
 
-# Custom bazelrc file for Docker
-echo "-----> configure Bazel"
-echo -e "\nstartup --batch" >> "$BUILD_DIR"/bazel.bazelrc
-echo -e "\nbuild --spawn_strategy=standalone --genrule_strategy=standalone" \
-  >> "$BUILD_DIR/bazel.bazelrc"
+###################################
+# END: Installing prerequisites   #
+###################################
 
-# Build app
+###################################
+# BEGIN: Build app                #
+###################################
+
+# Build app using build_path as the target to build
 echo "-----> Building app"
-BAZEL="${BASE}/bin/bazel --bazelrc=$BUILD_DIR/bazel.bazelrc"
+BAZEL_CMD="$BAZEL_BASE/bin/bazel --bazelrc=$BUILD_DIR/.bazelrc"
 cd "$BUILD_DIR"
-${BAZEL} clean
-${BAZEL} build -c opt "$(cat build_path)"
+$BAZEL_CMD clean
+$BAZEL_CMD build -c opt "$(cat build_path)"
 
-# Find absolute path to deploy jar. For whatever reason. Heroku doesn't like the
-# Bazel symlinks.
+# Find absolute path to deploy jar. For whatever reason. Heroku doesn't like the Bazel symlinks.
 BAZEL_BIN="$(ls -l | grep "bazel-bin" | sed "s/.* -> //")"
+echo "$BAZEL_BIN"
 
-# Copy the deploy jar to the build directory
-cp "$BAZEL_BIN"/"$(sed "s/:/\//" build_path)" "$BUILD_DIR/app.jar"
+# Copy the deploy jar to the root $BUILD_DIR
+cp "$BAZEL_BIN/$(sed "s/:/\//" build_path)" "$BUILD_DIR/app.jar"
 
 # Clean up other artifacts so that the slug is smaller
 echo "-----> Cleaning up build directory"
-${BAZEL} clean
-rm -rf "$BUILD_DIR/bazel"
+$BAZEL_CMD clean
+
+###################################
+# END: Build app                  #
+###################################
