@@ -96,7 +96,6 @@ fi
 BAZEL_BASE="$CACHE_DIR/bazel"
 
 # Install Bazel inside $BAZEL_BASE
-echo "-----> Installing Bazel"
 if [[ ! -d "$CACHE_DIR/bazel" ]]; then
   /usr/bin/env bash "$BAZEL_INSTALLER" \
     --base="$BAZEL_BASE" \
