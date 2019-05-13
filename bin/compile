@@ -74,8 +74,7 @@ echo "-----> Init jvm-common scripts"
 
 # Install the JDK to $BUILD_DIR, since it needs to be included in the slug
 echo "-----> Installing JDK using jvm-common scripts"
-install_java_with_overlay "$BUILD_DIR" | indent
-echo "-----> Java 8 installed"
+install_java_with_overlay "$BUILD_DIR"
 export JAVA_HOME="$BUILD_DIR/.jdk"
 
 # Fetch the Bazel installer script
