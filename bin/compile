@@ -68,16 +68,16 @@ if [[ ! -d "$CACHE_DIR/jvm-common" ]]; then
   . "$CACHE_DIR/jvm-common/bin/util"
   . "$CACHE_DIR/jvm-common/bin/java"
 
-  # Install the JDK to $CACHE_DIR
+  # Install the JDK to $BUILD_DIR, since it needs to be included in the slug
   echo "-----> Installing JDK using jvm-common scripts"
-  install_java_with_overlay "$CACHE_DIR" | indent
+  install_java_with_overlay "$BUILD_DIR" | indent
   echo "-----> Java 8 installed"
 else
   echo "-----> Using cached Java 8"
 fi
 
 # Set this environment variable for Bazel, so it can use JDK 1.8.
-export JAVA_HOME="$CACHE_DIR/.jdk"
+export JAVA_HOME="$BUILD_DIR/.jdk"
 
 # Fetch the Bazel installer script
 BAZEL_URL="https://github.com/bazelbuild/bazel/releases/download/$BAZEL_VERSION/bazel-$BAZEL_VERSION-installer-linux-x86_64.sh"
