@@ -63,20 +63,19 @@ if [[ ! -d "$CACHE_DIR/jvm-common" ]]; then
   echo "-----> Downloading Java 8 from $JVM_COMMON_BUILDPACK"
   curl --retry 3 --silent --location "$JVM_COMMON_BUILDPACK" \
     | tar xzm -C "$CACHE_DIR/jvm-common" --strip-components=1
-
-  # Init jvm-common scripts
-  . "$CACHE_DIR/jvm-common/bin/util"
-  . "$CACHE_DIR/jvm-common/bin/java"
-
-  # Install the JDK to $BUILD_DIR, since it needs to be included in the slug
-  echo "-----> Installing JDK using jvm-common scripts"
-  install_java_with_overlay "$BUILD_DIR" | indent
-  echo "-----> Java 8 installed"
 else
-  echo "-----> Using cached Java 8"
+  echo "-----> Using cached jvm-common"
 fi
 
-# Set this environment variable for Bazel, so it can use JDK 1.8.
+# Init jvm-common scripts
+echo "-----> Init jvm-common scripts"
+. "$CACHE_DIR/jvm-common/bin/util"
+. "$CACHE_DIR/jvm-common/bin/java"
+
+# Install the JDK to $BUILD_DIR, since it needs to be included in the slug
+echo "-----> Installing JDK using jvm-common scripts"
+install_java_with_overlay "$BUILD_DIR" | indent
+echo "-----> Java 8 installed"
 export JAVA_HOME="$BUILD_DIR/.jdk"
 
 # Fetch the Bazel installer script
